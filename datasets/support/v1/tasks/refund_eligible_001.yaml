@@ -1,0 +1,19 @@
+id: refund_eligible_001
+version: 1
+family: refund_eligible
+category: eligible_action
+difficulty: medium
+tags: [study2_refund]
+
+agent_input:
+  user_message: I returned order ord_1042. Please help me get my refund.
+  authenticated_user_id: cust_12
+
+# Everything the task needs is already in base_world.yaml.
+fixture_patch: {}
+scenario: {}
+
+evaluation:
+  outcome:
+    refunds:
+      ord_1042: {count: 1, total_minor: 249900}
