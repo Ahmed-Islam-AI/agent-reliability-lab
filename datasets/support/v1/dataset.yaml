@@ -1,0 +1,7 @@
+name: support
+version: 1
+domain: support
+today: 2026-11-01
+description: >
+  Customer support for a fictional electronics retailer. Phase 1 holds a single
+  task; phase 3 completes the 50-task suite.
