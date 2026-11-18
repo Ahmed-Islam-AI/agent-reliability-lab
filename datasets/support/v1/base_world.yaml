@@ -1,0 +1,31 @@
+# Shared starting state for every task in this dataset version.
+# Amounts are in paise (minor units): 249900 = INR 2,499.00.
+
+customers:
+  - {id: cust_12, name: Aisha Khan, email: aisha.khan@example.com}
+  - {id: cust_31, name: Rahul Mehta, email: rahul.mehta@example.com}
+
+orders:
+  - id: ord_1042
+    customer_id: cust_12
+    items: [Aurora NC700 Wireless Headphones]
+    paid_amount_minor: 249900
+    currency: INR
+    status: delivered
+    created_at: 2026-10-08
+    shipping_address: 14 Park Street, Kolkata 700016
+  - id: ord_1077
+    customer_id: cust_31
+    items: [Volt 65W USB-C Charger]
+    paid_amount_minor: 189900
+    currency: INR
+    status: delivered
+    created_at: 2026-10-15
+    shipping_address: 22 MG Road, Bengaluru 560001
+
+returns:
+  - {id: ret_1042, order_id: ord_1042, received: true, inspection_passed: true}
+  - {id: ret_1077, order_id: ord_1077, received: true, inspection_passed: true}
+
+approvals: []
+refunds: []
