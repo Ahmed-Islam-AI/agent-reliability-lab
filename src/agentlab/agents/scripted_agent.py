@@ -10,6 +10,7 @@ from agentlab.agents.agent_script import AgentScript
 from agentlab.errors.agentlab_error import AgentlabError
 from agentlab.errors.not_found_error import NotFoundError
 from agentlab.gateway.tool_gateway import ToolGateway
+from agentlab.llm.model_gateway import ModelGateway
 from agentlab.models.agent_input import AgentInput
 from agentlab.models.agent_result import AgentResult
 from agentlab.models.stop_reason import StopReason
@@ -36,16 +37,19 @@ class ScriptedAgent:
             raise AgentlabError(f"Invalid agent script {path}: {exc}") from exc
         return cls(script)
 
-    async def run(self, agent_input: AgentInput, gateway: ToolGateway) -> AgentResult:
-        """Run every scripted tool call in order and return the scripted reply."""
+    async def run(
+        self, agent_input: AgentInput, tools: ToolGateway, model: ModelGateway
+    ) -> AgentResult:
+        """Run every scripted tool call in order and return the scripted reply.
+
+        The model gateway is not used: a scripted agent never calls a model.
+        """
         outputs: dict[str, Any] = {}
         for index, step in enumerate(self.script.steps, start=1):
             arguments = {
                 key: _resolve(value, outputs) for key, value in step.args.items()
             }
-            output = await gateway.execute(
-                step.tool, arguments, call_id=f"call_{index}"
-            )
+            output = await tools.execute(step.tool, arguments, call_id=f"call_{index}")
             outputs.update(output)
         return AgentResult(
             final_response=self.script.final_response,
