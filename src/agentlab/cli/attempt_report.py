@@ -1,6 +1,7 @@
 """Print a stored attempt: statuses, trace and scores, read back from the database."""
 
 import json
+from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
@@ -13,14 +14,22 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from agentlab.cli.console import console
 from agentlab.db.tables.agent_config_table import AgentConfigTable
 from agentlab.db.tables.attempt_table import AttemptTable
+from agentlab.db.tables.model_call_table import ModelCallTable
 from agentlab.db.tables.run_table import RunTable
 from agentlab.db.tables.score_table import ScoreTable
 from agentlab.db.tables.task_version_table import TaskVersionTable
 from agentlab.db.tables.trace_event_table import TraceEventTable
 from agentlab.errors.not_found_error import NotFoundError
 from agentlab.models.event_type import EventType
+from agentlab.models.model_call_status import ModelCallStatus
 
-_COLORS = {"pass": "green", "ok": "green", "fail": "red", "denied": "red"}
+_COLORS = {
+    "pass": "green",
+    "ok": "green",
+    "fail": "red",
+    "failed": "red",
+    "denied": "red",
+}
 
 
 async def print_attempt(
@@ -54,6 +63,13 @@ async def print_attempt(
                 .order_by(ScoreTable.id)
             )
         ).all()
+        model_calls = (
+            await session.scalars(
+                select(ModelCallTable)
+                .where(ModelCallTable.attempt_id == attempt_id)
+                .order_by(ModelCallTable.sequence)
+            )
+        ).all()
 
     console.print(
         Panel(
@@ -76,6 +92,8 @@ async def print_attempt(
             escape(_detail(event.event_type, event.payload)),
         )
     console.print(trace)
+    if model_calls:
+        _print_model_calls(model_calls)
 
     table = Table(title="Scores")
     for column in ("evaluator", "dimension", "status", "reason", "evidence"):
@@ -94,8 +112,66 @@ async def print_attempt(
     )
 
 
+def _print_model_calls(calls: Sequence[ModelCallTable]) -> None:
+    """Render one row per provider request, then totals for the attempt."""
+    table = Table(title="Model calls")
+    for column in (
+        "#",
+        "turn",
+        "try",
+        "status",
+        "model",
+        "in",
+        "out",
+        "est. USD",
+        "ms",
+    ):
+        table.add_column(column)
+    for call in calls:
+        table.add_row(
+            str(call.sequence),
+            str(call.turn),
+            str(call.try_number),
+            _colored(call.status),
+            call.resolved_model or call.requested_model,
+            str(call.input_tokens if call.input_tokens is not None else "-"),
+            str(call.output_tokens if call.output_tokens is not None else "-"),
+            f"{call.estimated_cost_usd:.6f}"
+            if call.estimated_cost_usd is not None
+            else "?",
+            f"{call.latency_ms:.0f}",
+        )
+    console.print(table)
+    ok = [call for call in calls if call.status == ModelCallStatus.OK]
+    costs = [call.estimated_cost_usd for call in ok]
+    total = (
+        "unknown"
+        if not ok or any(cost is None for cost in costs)
+        else f"${sum(cost for cost in costs if cost is not None):.6f}"
+    )
+    tokens_in = sum(call.input_tokens or 0 for call in ok)
+    tokens_out = sum(call.output_tokens or 0 for call in ok)
+    waited = sum(call.backoff_ms for call in calls) / 1000
+    console.print(
+        f"turns {len(ok)}   requests {len(calls)}   tokens in {tokens_in} "
+        f"out {tokens_out}   estimated cost {total} (list prices)   "
+        f"rate-limit wait {waited:.1f}s"
+    )
+
+
 def _detail(event_type: str, payload: dict[str, Any]) -> str:
     """Summarize an event payload in one line."""
+    if event_type == EventType.MODEL_REQUEST_STARTED:
+        return f"{payload['model']}  turn {payload['turn']}  try {payload['try']}"
+    if event_type == EventType.MODEL_REQUEST_FINISHED:
+        if payload.get("error"):
+            return _short(payload["error"], 110)
+        calls = [call["name"] for call in payload.get("tool_calls") or []]
+        return (
+            f"calls {', '.join(calls)}"
+            if calls
+            else _short(payload.get("text") or "", 110)
+        )
     if event_type == EventType.TOOL_REQUESTED:
         return f"{payload['tool']}({_short(payload['arguments'], 90)})"
     if event_type in (EventType.TOOL_FINISHED, EventType.TOOL_REJECTED):
